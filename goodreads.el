@@ -53,11 +53,42 @@ Returns a list of lists in the same order as the API gives. Use with the output 
         (setq title (nth 2 (assoc 'title (assoc 'best_book this-book))))
         (setq author (nth 2 (assoc 'name (assoc 'author (assoc 'best_book this-book)))))
         ;; add the list of attributes for THIS-BOOK onto RELEVANT-LIST
-        (setq relevant-list (cons (list id title author rating rating-count year) relevant-list))))
+        (setq relevant-list (cons (list (concat title "\t" author "\t" rating "/" rating-count "\t" year) id) relevant-list))))
     (nreverse relevant-list)))  ; it's built in reverse
 
-;; TODO integrate counsel
+
+(defun goodreads-get-user-id)
+
+(defun goodreads-get-shelves (key user-id)
+  (with-temp-buffer
+  (shell-command (format "wget -qO- 'https://www.goodreads.com/shelf/list.xml?key=%S&user_id=%S'"
+                         key
+                         user-id) t)  ; put output in temp buffer
+    (goto-char (point-min))
+    ;(forward-line 4)  ; <GoodreadsResponse> is on line 4
+    (assoc 'shelves (assoc 'GoodreadsResponse (xml-parse-region (point))))))
+
+
+(defun goodreads-ivy-action (id)
+  "Helper function for `goodreads-ivy-read'. Prints ID (for now;
+later add it it shelf or somethnig)."
+  (print id)
+  )
+
+(defun goodreads-ivy-read (books-list)
+  "Wrapper function that passes BOOKS-LIST to `ivy-read'."
+  (ivy-read "Choose book: "
+            books-list
+            :require-match t
+            :action (lambda (book) (goodreads-ivy-action (cdr book))))
+  )
+
+
+
+;; DONE integrate ivy
+;; TODO write OAuth function, then do goodreads-get-user-id
 ;; TODO write functions that move books from shelf to shelf. prolly have to write helper functions to get the list of shelves of user.
+;; TODO add on-a-shelf to candidate features
 
 (provide 'goodreads)
 ;;; goodreads.el ends here
