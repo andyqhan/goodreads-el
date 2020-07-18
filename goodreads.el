@@ -19,6 +19,7 @@
 ;;
 ;;; Code:
 
+(require 'ivy)
 (require 'cl)  ;; for assertions
 (require 'oauth)
 ;; the thing in eval-when-compile wasn't loaded, which meant that oauth-nonce-function
@@ -98,20 +99,27 @@ that file so you won't have to reauthenticate."
       goodreads-access-token))
 
 
-(defun goodreads-search-books (key query)
-  "Using KEY, search Goodreads for QUERY.
-Currently outputs int, needs to be string. does not require authentication"
-  ;; TODO call `goodreads-get-relevant-info' from inside this function
+(defun goodreads-search-books (query)
+  "Using public key, search Goodreads for QUERY.
+
+this basically asks the api for the result of searching for QUERY, then
+passes that to `goodreads-get-relevant-info'."
+  (assert (not (equal goodreads-my-key 47))
+          :string "`goodreads-my-key' not detected. make sure you setq it; see readme :)")
+
+  (let (raw-search)
   (with-temp-buffer
-  (shell-command (format "wget -qO- 'https://www.goodreads.com/search/index.xml?key=%s&q=%s'"
-                         key
-                         query) t)  ; put output in temp buffer
+    (shell-command (format "wget -qO- 'https://www.goodreads.com/search/index.xml?key=%s&q=%s'"
+                           goodreads-my-key
+                           query) t)  ; put output in temp buffer
     (goto-char (point-min))
-    (assoc 'search (assoc 'GoodreadsResponse (xml-parse-region (point))))))
+    (setq raw-search (assoc 'search (assoc 'GoodreadsResponse (xml-parse-region (point)))))
+    (goodreads-get-relevant-info raw-search))))
 
 
 (defun goodreads-get-relevant-info (books)
   "Helper function that pulls out the important information out of BOOKS.
+
 Returns a list of lists in the same order as the API gives. Use
 with the output of goodreads-search-books. does not require
 authentication"
@@ -123,7 +131,7 @@ authentication"
     ; not using dolist because RESULTS has weird quotation marks and shit everywhere
       (let (id title author rating rating-count year
                (this-book (assoc 'work (nthcdr book-index results))))
-        (setq id (nth 2 (assoc 'id this-book)))  ; might have to use the one inside best_book
+        (setq id (nth 2 (assoc 'id this-book)))  ; might have to use the one inside best_book. use `string-to-number'?
         (setq rating-count (nth 2 (assoc 'ratings_count this-book)))
         (setq year (nth 2 (assoc 'original_publication_year this-book)))
         (setq rating (nth 2 (assoc 'average_rating this-book)))
@@ -205,8 +213,8 @@ later add it it shelf or something)."
 
 ;; DONE integrate ivy
 ;; DONE write OAuth function
-;; TODO test if i can access OAuth things with my token
-;; TODO goodreads-get-user-id
+;; DONE test if i can access OAuth things with my token
+;; DONE goodreads-get-user-id
 ;; TODO add on-a-shelf to candidate features
 ;; TODO write functions that move books from shelf to shelf. prolly have to write helper functions to get the list of shelves of user.
 
