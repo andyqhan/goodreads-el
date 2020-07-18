@@ -19,6 +19,8 @@
 ;;
 ;;; Code:
 
+;; see betterreads
+
 (require 'ivy)
 (require 'cl)  ;; for assertions
 (require 'oauth)
@@ -167,6 +169,7 @@ requires `goodreads-my-secret' and `goodreads-my-id' to be set."
           :string "`goodreads-my-secret' not detected. make sure to register with the api first :)")
   (assert (not (equal goodreads-my-id 47))
           :string "`goodreads-my-id' not detected. make sure to run `goodreads-get-user-id' first :)")
+
   (let (shelves-list shelf-count pretty-shelf-list)
     (with-current-buffer (oauth-fetch-url
                           goodreads-access-token  ;; not asserting bc it's implied in my-id
@@ -176,6 +179,7 @@ requires `goodreads-my-secret' and `goodreads-my-id' to be set."
       (goto-char (point-min))
       (forward-line 21)
       (setq shelves-list (assoc 'shelves (assoc 'GoodreadsResponse (xml-parse-region (point))))))
+
     (setq shelf-count (string-to-number (cdr (nth 2 (nth 1 shelves-list)))))
 
     (dotimes (shelf-index shelf-count pretty-shelf-list)
@@ -189,10 +193,31 @@ requires `goodreads-my-secret' and `goodreads-my-id' to be set."
       (setq book-count (nth 2 (assoc 'book_count this-shelf)))  ;; concat cries if this is a number so keeping it a string
 
       (setq pretty-shelf-list (cons (list (concat name ", " book-count " book(s)") id) pretty-shelf-list))))
-    (nreverse pretty-shelf-list)
-  ))
+    (nreverse pretty-shelf-list)))
 
-
+(defun goodreads-get-shelf-books (&optional shelf-name sort)
+  "Return books on shelf SHELF-NAME in SORT order."
+  ;; goddam this api sucks
+  (let ((review-list 1) (current-page-reviews))  ;; for whatever reason, goodreads calls books that are on shelves "reviews"
+    (while (< total-reviews (length review-list))
+      (with-current-buffer (oauth-fetch-url
+                         goodreads-access-token
+                         (format "https://www.goodreads.com/review/list.xml?v=2&id=%s&page=%s&shelf=%s&sort=%s&per_page=%s&key=%s"
+                                 goodreads-my-id
+                                 page-num
+                                 shelf-name
+                                 sort
+                                 "200"  ;; per-page
+                                 goodreads-my-secret))
+                        (goto-char (point-min))
+                        (forward-line 21)
+                        (setq current-page-reviews (car (xml-parse-region (point))))
+                        )
+      ;; TODO set `total-reviews'
+      ;; TODO pull out relevant info from `current-page-reviews'
+      ;; TODO add assertions
+      (setq review-list (cdr (nth 2 (nth 1 current-page-reviews))))
+  )))
 
 ;;;; ivy things
 
