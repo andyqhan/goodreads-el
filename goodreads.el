@@ -19,6 +19,7 @@
 ;;
 ;;; Code:
 
+(require 'cl)  ;; for assertions
 (require 'oauth)
 ;; the thing in eval-when-compile wasn't loaded, which meant that oauth-nonce-function
 ;; was not activated to sasl-unique-id
@@ -27,6 +28,8 @@
   "Your public goodreads key.")  ; set these to 47 when I'm done
 (defcustom goodreads-my-secret "6Un4YARg5MWpW1gcQYGwi1ticXKkRECpZk6JXuzM"
   "Your secret goodreads key.")
+(defvar goodreads-my-id 47
+  "Your user_id.")
 
 ;; lmao remember when you spent like an hour debugging ouauth-authorize when you just forgot
 ;; to put www. in these urls
@@ -98,12 +101,12 @@ that file so you won't have to reauthenticate."
 (defun goodreads-search-books (key query)
   "Using KEY, search Goodreads for QUERY.
 Currently outputs int, needs to be string. does not require authentication"
+  ;; TODO call `goodreads-get-relevant-info' from inside this function
   (with-temp-buffer
-  (shell-command (format "wget -qO- 'https://www.goodreads.com/search/index.xml?key=%S&q=%S'"
+  (shell-command (format "wget -qO- 'https://www.goodreads.com/search/index.xml?key=%s&q=%s'"
                          key
                          query) t)  ; put output in temp buffer
     (goto-char (point-min))
-    ;(forward-line 4)  ; <GoodreadsResponse> is on line 4
     (assoc 'search (assoc 'GoodreadsResponse (xml-parse-region (point))))))
 
 
@@ -131,16 +134,55 @@ authentication"
     (nreverse relevant-list)))  ; it's built in reverse
 
 
-(defun goodreads-get-user-id)
+(defun goodreads-get-user-id ()
+  "Set `goodreads-my-id' with api."
+  (assert goodreads-access-token
+    :string "`goodreads-access-token' not detected. make sure to run `goodreads-oauth-authorize' first :)")
+  (let (user-list)
+    (with-current-buffer (oauth-fetch-url
+                          goodreads-access-token
+                          "https://www.goodreads.com/api/auth_user")
+      ;; `oauth-fetch-url' returns buffer containing GET thingie
+      (goto-char (point-min))
+      (forward-line 21)  ;; idk if this is the best way to do this.
+      ;; worried that header won't always be 21 lines
+      (setq user-list (assoc 'user (assoc 'GoodreadsResponse (xml-parse-region (point))))))
+    (setq goodreads-my-id (string-to-number (cdr (nth 0 (nth 1 user-list)))))))
 
-(defun goodreads-get-shelves (key user-id)
-  (with-temp-buffer
-  (shell-command (format "wget -qO- 'https://www.goodreads.com/shelf/list.xml?key=%S&user_id=%S'"
-                         key
-                         user-id) t)  ; put output in temp buffer
-    (goto-char (point-min))
-    ;(forward-line 4)  ; <GoodreadsResponse> is on line 4
-    (assoc 'shelves (assoc 'GoodreadsResponse (xml-parse-region (point))))))
+
+(defun goodreads-get-shelves ()
+  "Return your shelves.
+
+requires `goodreads-my-secret' and `goodreads-my-id' to be set."
+
+  (assert (not (equal goodreads-my-secret 47))
+          :string "`goodreads-my-secret' not detected. make sure to register with the api first :)")
+  (assert (not (equal goodreads-my-id 47))
+          :string "`goodreads-my-id' not detected. make sure to run `goodreads-get-user-id' first :)")
+  (let (shelves-list shelf-count pretty-shelf-list)
+    (with-current-buffer (oauth-fetch-url
+                          goodreads-access-token  ;; not asserting bc it's implied in my-id
+                          (format "https://www.goodreads.com/shelf/list.xml?key=%s&user_id=%s"
+                                  goodreads-my-secret
+                                  goodreads-my-id))
+      (goto-char (point-min))
+      (forward-line 21)
+      (setq shelves-list (assoc 'shelves (assoc 'GoodreadsResponse (xml-parse-region (point))))))
+    (setq shelf-count (string-to-number (cdr (nth 2 (nth 1 shelves-list)))))
+
+    (dotimes (shelf-index shelf-count pretty-shelf-list)
+      (let (id name book-count this-shelf
+               (this-shelf
+                (assoc 'user_shelf (nthcdr (* 2 shelf-index) (nthcdr 3 shelves-list)))))
+      (print shelf-index)
+      (print this-shelf)
+      (setq id (string-to-number (nth 2 (assoc 'id this-shelf))))
+      (setq name (nth 2 (assoc 'name this-shelf)))
+      (setq book-count (nth 2 (assoc 'book_count this-shelf)))  ;; concat cries if this is a number so keeping it a string
+
+      (setq pretty-shelf-list (cons (list (concat name ", " book-count " book(s)") id) pretty-shelf-list))))
+    (nreverse pretty-shelf-list)
+  ))
 
 
 
@@ -148,7 +190,7 @@ authentication"
 
 (defun goodreads-ivy-action (id)
   "Helper function for `goodreads-ivy-read'. Prints ID (for now;
-later add it it shelf or somethnig)."
+later add it it shelf or something)."
   (print id)
   )
 
