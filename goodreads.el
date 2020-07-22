@@ -98,7 +98,24 @@ that file so you won't have to reauthenticate."
                             (oauth-t-token-secret token))))
           (save-buffer)
           (kill-this-buffer)))
-      goodreads-access-token))
+    goodreads-access-token))
+
+
+(defun goodreads-get-user-id ()
+  "Set `goodreads-my-id' with api."
+  (interactive)
+  (assert goodreads-access-token
+    :string "`goodreads-access-token' not detected. make sure to run `goodreads-oauth-authorize' first :)")
+  (let (user-list)
+    (with-current-buffer (oauth-fetch-url
+                          goodreads-access-token
+                          "https://www.goodreads.com/api/auth_user")
+      ;; `oauth-fetch-url' returns buffer containing GET thingie
+      (goto-char (point-min))
+      (forward-line 21)  ;; idk if this is the best way to do this.
+      ;; worried that header won't always be 21 lines
+      (setq user-list (assoc 'user (assoc 'GoodreadsResponse (xml-parse-region (point))))))
+    (setq goodreads-my-id (string-to-number (cdr (nth 0 (nth 1 user-list)))))))
 
 
 (defun goodreads-search-books (query)
@@ -106,6 +123,7 @@ that file so you won't have to reauthenticate."
 
 this basically asks the api for the result of searching for QUERY, then
 passes that to `goodreads-get-relevant-info'."
+  (interactive)
   (assert (not (equal goodreads-my-key 47))
           :string "`goodreads-my-key' not detected. make sure you setq it; see readme :)")
 
@@ -144,22 +162,6 @@ authentication"
     (nreverse relevant-list)))  ; it's built in reverse
 
 
-(defun goodreads-get-user-id ()
-  "Set `goodreads-my-id' with api."
-  (assert goodreads-access-token
-    :string "`goodreads-access-token' not detected. make sure to run `goodreads-oauth-authorize' first :)")
-  (let (user-list)
-    (with-current-buffer (oauth-fetch-url
-                          goodreads-access-token
-                          "https://www.goodreads.com/api/auth_user")
-      ;; `oauth-fetch-url' returns buffer containing GET thingie
-      (goto-char (point-min))
-      (forward-line 21)  ;; idk if this is the best way to do this.
-      ;; worried that header won't always be 21 lines
-      (setq user-list (assoc 'user (assoc 'GoodreadsResponse (xml-parse-region (point))))))
-    (setq goodreads-my-id (string-to-number (cdr (nth 0 (nth 1 user-list)))))))
-
-
 (defun goodreads-get-shelves ()
   "Return your shelves.
 
@@ -186,8 +188,6 @@ requires `goodreads-my-secret' and `goodreads-my-id' to be set."
       (let (id name book-count this-shelf
                (this-shelf
                 (assoc 'user_shelf (nthcdr (* 2 shelf-index) (nthcdr 3 shelves-list)))))
-      (print shelf-index)
-      (print this-shelf)
       (setq id (string-to-number (nth 2 (assoc 'id this-shelf))))
       (setq name (nth 2 (assoc 'name this-shelf)))
       (setq book-count (nth 2 (assoc 'book_count this-shelf)))  ;; concat cries if this is a number so keeping it a string
@@ -195,9 +195,11 @@ requires `goodreads-my-secret' and `goodreads-my-id' to be set."
       (setq pretty-shelf-list (cons (list (concat name ", " book-count " book(s)") id) pretty-shelf-list))))
     (nreverse pretty-shelf-list)))
 
+
 (defun goodreads-get-shelf-books (&optional shelf-name sort)
   "Return books on shelf SHELF-NAME in SORT order."
   ;; goddam this api sucks
+  (interactive)
   (let ((review-list 1) (current-page-reviews))  ;; for whatever reason, goodreads calls books that are on shelves "reviews"
     (while (< total-reviews (length review-list))
       (with-current-buffer (oauth-fetch-url
@@ -219,6 +221,7 @@ requires `goodreads-my-secret' and `goodreads-my-id' to be set."
       (setq review-list (cdr (nth 2 (nth 1 current-page-reviews))))
   )))
 
+
 ;;;; ivy things
 
 (defun goodreads-ivy-action (id)
@@ -226,6 +229,7 @@ requires `goodreads-my-secret' and `goodreads-my-id' to be set."
 later add it it shelf or something)."
   (print id)
   )
+
 
 (defun goodreads-ivy-read (books-list)
   "Wrapper function that passes BOOKS-LIST to `ivy-read'."
