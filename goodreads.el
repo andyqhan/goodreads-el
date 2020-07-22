@@ -121,8 +121,8 @@ that file so you won't have to reauthenticate."
 (defun goodreads-search-books (query)
   "Using public key, search Goodreads for QUERY.
 
-this basically asks the api for the result of searching for QUERY, then
-passes that to `goodreads-get-relevant-info'."
+this basically asks the api for the xml result of searching for QUERY, then
+cleans it up a bit and passes it to `goodreads-get-relevant-info'."
   (interactive)
   (assert (not (equal goodreads-my-key 47))
           :string "`goodreads-my-key' not detected. make sure you setq it; see readme :)")
@@ -158,14 +158,16 @@ authentication"
         (setq title (nth 2 (assoc 'title (assoc 'best_book this-book))))
         (setq author (nth 2 (assoc 'name (assoc 'author (assoc 'best_book this-book)))))
         ;; add the list of attributes for THIS-BOOK onto RELEVANT-LIST
-        (setq relevant-list (cons (list (concat title "\t" author "\t" rating "/" rating-count "\t" year) id) relevant-list))))
+        (setq relevant-list (cons (list (concat title "\t" author "\t" rating " / " rating-count "\t" year) id) relevant-list))))
     (nreverse relevant-list)))  ; it's built in reverse
 
 
 (defun goodreads-get-shelves ()
-  "Return your shelves.
+  "Return your shelves in the form of a list of tuples.
 
-requires `goodreads-my-secret' and `goodreads-my-id' to be set."
+first element of the tuple is a string of the form 'shelf-name, book-count'.
+second element is shelf id. requires `goodreads-my-secret' and `goodreads-my-id'
+to be set."
 
   (assert (not (equal goodreads-my-secret 47))
           :string "`goodreads-my-secret' not detected. make sure to register with the api first :)")
@@ -196,12 +198,21 @@ requires `goodreads-my-secret' and `goodreads-my-id' to be set."
     (nreverse pretty-shelf-list)))
 
 
-(defun goodreads-get-shelf-books (&optional shelf-name sort)
-  "Return books on shelf SHELF-NAME in SORT order."
-  ;; goddam this api sucks
+(cl-defun goodreads-get-shelf-books (shelf-name &optional (sort "date_added"))
+  "Return books on shelf SHELF-NAME in SORT order (optional; default 'date_added').
+
+both parameters are strings.
+
+you can see the possible values for SORT here: https://www.goodreads.com/api/index#reviews.list.
+note that for the 'read' shelf, 'date_read' is appropriate, while for the
+'to-read' shelf, 'date_added' is appropriate."
+
+  ;; cl-defun bc i need default value of optional argument
   (interactive)
-  (let ((review-list 1) (current-page-reviews))  ;; for whatever reason, goodreads calls books that are on shelves "reviews"
-    (while (< total-reviews (length review-list))
+  (let ((total-reviews 1) (reviews-list nil) (this-page-reviews) (page-num 1))  ;; for whatever reason, goodreads calls books that are on shelves "reviews"
+    (while (< (length reviews-list) total-reviews)
+      (print (length reviews-list))
+      ;; iterate through each page
       (with-current-buffer (oauth-fetch-url
                          goodreads-access-token
                          (format "https://www.goodreads.com/review/list.xml?v=2&id=%s&page=%s&shelf=%s&sort=%s&per_page=%s&key=%s"
@@ -213,13 +224,37 @@ requires `goodreads-my-secret' and `goodreads-my-id' to be set."
                                  goodreads-my-secret))
                         (goto-char (point-min))
                         (forward-line 21)
-                        (setq current-page-reviews (car (xml-parse-region (point))))
-                        )
-      ;; TODO set `total-reviews'
-      ;; TODO pull out relevant info from `current-page-reviews'
-      ;; TODO add assertions
-      (setq review-list (cdr (nth 2 (nth 1 current-page-reviews))))
-  )))
+                        (setq this-page-reviews (car (xml-parse-region (point)))))
+
+      ;; minimal list with all the info in it
+      (setq this-page-reviews (assoc 'reviews (nthcdr 7 this-page-reviews)))
+      ;(print this-page-reviews)
+
+      ;; pull out relevant info for each book on this page
+      (let ((page-review-count (string-to-number (cdr (assoc 'end (nth 1 this-page-reviews))))))
+        (print page-review-count)
+        (dotimes (this-review-index page-review-count reviews-list)
+          (print this-review-index)
+          (let (id title author year rating rating-count
+                   (this-review (assoc 'book (nth (* 2 this-review-index) (nthcdr 3 this-page-reviews)))))
+            ;; not sure if this is the right id
+            (setq id (string-to-number (nth 2 (assoc 'id this-review))))
+            (setq title (nth 2 (assoc 'title_without_series this-review)))
+            (setq year (nth 2 (assoc 'publication_year this-review)))
+            (setq rating (nth 2 (assoc 'average_rating this-review)))
+            (setq rating-count (nth 2 (assoc 'ratings_count this-review)))
+            (setq author (nth 2 (assoc 'name (assoc 'author (assoc 'authors this-review)))))
+            (setq reviews-list (cons (list (concat "'" title "'" ", " author " (" year "). " rating " / " rating-count)
+                                           id) reviews-list)))))
+
+      ;; set the total number of reviews if it's not already been set
+      (if (not (eq total-reviews 1))
+          (setq total-reviews
+                (string-to-number (cdr (assoc 'total (nth 1 reviews-list))))))
+      ;; go to the next page
+      (1+ page-num))
+
+    (print reviews-list)))
 
 
 ;;;; ivy things
