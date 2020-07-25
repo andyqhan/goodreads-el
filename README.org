@@ -1,2 +1,25 @@
-#+TITLE: Readme
-Under construction.
+#+TITLE: goodreads-el
+
+this package allows you to manage goodreads from within your emacs.
+
+* requirements
+- [[https://github.com/psanford/emacs-oauth][emacs-oauth]]: not the one that’s included with emacs, since that one uses oauth 2 but goodreads needs oauth 1
+- =cl=: should be included with emacs: =(require ’cl)=
+- [[https://github.com/abo-abo/swiper][ivy / counsel]]: for completion. optional.
+
+* authorizing
+in order to use this package, you’ll have to register your app with goodreads. go [[https://www.goodreads.com/api/keys][here]] and register. you’ll get a public key that’s 22 characters long and a secret that’s 40 characters long.
+
+next =(setq goodreads-my-key "your_key_here")= and =(setq goodreads-my-secret "your_secret_here")=.
+
+=goodreads-el= provides a function called =goodreads-oauth-authorize=. this function uses =goodreads-my-key= and =goodreads-my-secret= to request an access token from the goodreads servers. so that you don’t have to re-authorize every time, =goodreads-oauth-authorize= will serialize the token and store it at a location defined by the variable =goodreads-token-location= (by default, =~/.goodreads-el-token=. you can use =setq= prior to calling =goodreads-oauth-authorize= to change it).
+
+after you’ve set =goodreads-my-key=, =goodreads-my-secret=, and optionally =goodreads-token-location=, you can =M-x goodreads-oauth-authorize=.
+
+if all goes well, then your token should be stored in the variable =goodreads-access-token=. you’ll have to re-run this function every time you restart emacs. in order to avoid this, you could put =(goodreads-oauth-authorize)= in your init file.
+
+if you get an error that some function in =oauth= has a value of nil, then do =C-h f make-oauth-access-token= and click the link that takes you to =oauth.el= and then run =M-x eval-buffer= in it.
+
+next, you have to retrieve your unique user id from the goodreads servers to be able to write. this requires =goodreads-oauth-authorize= first. run =M-x goodreads-get-user-id=. if all goes well, your user id should be in the variable =goodreads-my-id=.
+
+* features
