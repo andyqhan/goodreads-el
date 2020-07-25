@@ -257,6 +257,24 @@ note that for the 'read' shelf, 'date_read' is appropriate, while for the
     (print reviews-list)))
 
 
+(defun goodreads-add-to-shelf (book shelf-name)
+  "Given BOOK, add it to SHELF-NAME (string).
+
+BOOK is an element of the list produced by `goodreads-search-books' or
+`goodreads-get-shelf-books'.
+
+if REMOVE is set to 'remove', then the book is removed from the shelf."
+
+  (let (book-id)
+    (setq book-id (nth 1 book))
+    (oauth-post-url
+     goodreads-access-token
+     "https://www.goodreads.com/shelf/add_to_shelf.xml"
+     '(("name" . shelf-name)
+       ("book-id" . book-id))
+     )))
+
+
 ;;;; ivy things
 
 (defun goodreads-ivy-action (id)
@@ -273,14 +291,6 @@ later add it it shelf or something)."
             :require-match t
             :action (lambda (book) (goodreads-ivy-action (cdr book)))))
 
-
-
-;; DONE integrate ivy
-;; DONE write OAuth function
-;; DONE test if i can access OAuth things with my token
-;; DONE goodreads-get-user-id
-;; TODO add on-a-shelf to candidate features
-;; TODO write functions that move books from shelf to shelf. prolly have to write helper functions to get the list of shelves of user.
 
 (provide 'goodreads)
 ;;; goodreads.el ends here
