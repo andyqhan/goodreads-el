@@ -103,6 +103,7 @@ that file so you won't have to reauthenticate."
 
 (defun goodreads-get-user-id ()
   "Set `goodreads-my-id' with api."
+  ;; TODO serialize this?
   (interactive)
   (assert goodreads-access-token
     :string "`goodreads-access-token' not detected. make sure to run `goodreads-oauth-authorize' first :)")
@@ -151,7 +152,7 @@ authentication"
     ; not using dolist because RESULTS has weird quotation marks and shit everywhere
       (let (id title author rating rating-count year
                (this-book (assoc 'work (nthcdr book-index results))))
-        (setq id (nth 2 (assoc 'id this-book)))  ; might have to use the one inside best_book. use `string-to-number'?
+        (setq id (nth 2 (assoc 'id (assoc 'best_book this-book))))  ;; the other id is the work id! doesn't work with add-to-shelf with work id.
         (setq rating-count (nth 2 (assoc 'ratings_count this-book)))
         (setq year (nth 2 (assoc 'original_publication_year this-book)))
         (setq rating (nth 2 (assoc 'average_rating this-book)))
@@ -257,21 +258,55 @@ note that for the 'read' shelf, 'date_read' is appropriate, while for the
     (print reviews-list)))
 
 
+(defun goodreads-get-book-id-with-isbn (isbn)
+  "Return book_id as a string given ISBN."
+  (with-current-buffer (oauth-fetch-url
+   goodreads-access-token
+   (format "https://www.goodreads.com/book/isbn_to_id?key=%s&isbn=%s"
+           goodreads-my-secret
+           isbn))
+  (goto-char (point-min))
+  (forward-line 21)
+  (current-word)))
+
+
+(defun goodreads-get-work-id (book-id)
+  "Return work_id given BOOK-ID.
+
+not sure if i need this though"
+  (with-current-buffer
+      (oauth-fetch-url
+       goodreads-access-token
+       (format "https://www.goodreads.com/book/id_to_work_id?key=%s&id=%s"
+               goodreads-my-secret
+               book-id))
+    (goto-char (point-min))
+    (forward-line 21)
+    (nth 2 (assoc 'item (assoc 'work-ids (car (xml-parse-region (point))))))))
+
+
 (defun goodreads-add-to-shelf (book shelf-name)
   "Given BOOK, add it to SHELF-NAME (string).
 
 BOOK is an element of the list produced by `goodreads-search-books' or
 `goodreads-get-shelf-books'.
 
-if REMOVE is set to 'remove', then the book is removed from the shelf."
+TODO if REMOVE is set to 'remove', then the book is removed from the shelf."
 
-  (let (book-id)
-    (setq book-id (nth 1 book))
+  (let ((args
+         ;; backtick and commas allow quoted lists with stuff evaluated inside
+         `(("shelves" . ,shelf-name)
+           ;; nth 1 in order to get id
+           ("bookids" . ,(nth 1 book)))))
     (oauth-post-url
      goodreads-access-token
-     "https://www.goodreads.com/shelf/add_to_shelf.xml"
-     '(("name" . shelf-name)
-       ("book-id" . book-id))
+     ;; ok. so this api is complete trash. the reason i'm using this method,
+     ;; instead of the singular /shelf/add_to_shelf.xml method, is because
+     ;; that one for some reason doesn't work! with the same exact arguments!
+     ;; i guess it's now a "feature" that this function can take a comma
+     ;; separated list of book-ids and shelf-names...
+     "https://www.goodreads.com/shelf/add_books_to_shelves.xml"
+     args
      )))
 
 
