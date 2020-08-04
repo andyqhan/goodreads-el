@@ -195,7 +195,7 @@ to be set."
       (setq name (nth 2 (assoc 'name this-shelf)))
       (setq book-count (nth 2 (assoc 'book_count this-shelf)))  ;; concat cries if this is a number so keeping it a string
 
-      (setq pretty-shelf-list (cons (list (concat name ", " book-count " book(s)") id) pretty-shelf-list))))
+      (setq pretty-shelf-list (cons (list (concat name "\t" book-count " book(s)") id) pretty-shelf-list))))
     (nreverse pretty-shelf-list)))
 
 
@@ -325,6 +325,37 @@ later add it it shelf or something)."
             books-list
             :require-match t
             :action (lambda (book) (goodreads-ivy-action (cdr book)))))
+
+
+;;;; completion things
+(defun goodreads-shelves ()
+  "Select shelf to view.
+
+basically a wrapper for `completing-read'"
+  (interactive)
+  (let* ((shelf-names (goodreads-get-shelves))
+         ;; get name of selected shelf via completing-read
+         ;; TODO get the first word of the string that completing-read returns...
+         ;; or just change -get-shelves so that the cdr is the name of the shelf
+         (shelf-id
+            (completing-read "select a shelf: "
+                                             shelf-names))
+
+  ;; TODO call goodreads-books
+
+    )
+  )
+
+(defun goodreads-books (&optional shelf-name books-list)
+  "Search for books.
+
+if SHELF-ID, look at the books in that shelf
+
+if SEARCH-STRING, look at the books returend by that search"
+
+  (if shelf-id
+      (goodreads-books nil (goodreads-get-shelf-books))
+  )
 
 
 (provide 'goodreads)
