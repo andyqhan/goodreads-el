@@ -231,17 +231,16 @@ note that for the 'read' shelf, 'date_read' is appropriate, while for the
 
       ;; minimal list with all the info in it
       (setq this-page-reviews (assoc 'reviews (nthcdr 7 this-page-reviews)))
-      ;(print this-page-reviews)
+      ; (print this-page-reviews)
 
       ;; pull out relevant info for each book on this page
       (let ((page-review-count (string-to-number (cdr (assoc 'end (nth 1 this-page-reviews))))))
-        (print page-review-count)
+        ; (print page-review-count)
         (dotimes (this-review-index page-review-count reviews-list)
-          (print this-review-index)
+          ; (print this-review-index)
           (let (id title author year rating rating-count
                    (this-review (assoc 'book (nth (* 2 this-review-index) (nthcdr 3 this-page-reviews)))))
-            ;; not sure if this is the right id
-            (setq id (string-to-number (nth 2 (assoc 'id this-review))))
+            (setq id (nth 2 (assoc 'id this-review)))
             (setq title (nth 2 (assoc 'title_without_series this-review)))
             (setq year (nth 2 (assoc 'publication_year this-review)))
             (setq rating (nth 2 (assoc 'average_rating this-review)))
@@ -290,10 +289,15 @@ not sure if i need this though"
 (defun goodreads-add-to-shelf (book shelf-name)
   "Given BOOK, add it to SHELF-NAME (string).
 
+if you try to add a book from one exclusive shelf to another, it'll delete the
+book from the first.
+
 BOOK is an element of the list produced by `goodreads-search-books' or
 `goodreads-get-shelf-books'.
 
 TODO if REMOVE is set to 'remove', then the book is removed from the shelf."
+
+;; huh interestingly if shelf-name doesn't exist then the api creates it
 
   (let ((args
          ;; backtick and commas allow quoted lists with stuff evaluated inside
@@ -308,8 +312,7 @@ TODO if REMOVE is set to 'remove', then the book is removed from the shelf."
      ;; i guess it's now a "feature" that this function can take a comma
      ;; separated list of book-ids and shelf-names...
      "https://www.goodreads.com/shelf/add_books_to_shelves.xml"
-     args
-     )))
+     args)))
 
 
 ;;;; ivy things
@@ -347,13 +350,42 @@ TODO: searching SEARCH-STRING on BOOKS-LIST"
     (if (and search-string (not shelf-name) (not books-list))
         (goodreads-books nil (goodreads-search-books search-string) nil)
       (if (and books-list (not shelf-name) (not search-string))
-          (completing-read "select a book: " books-list)
+          (goodreads-book-action
+           (assoc (completing-read "select a book: " books-list) books-list))
         (print "error. you have to specify (only) one argument!")
           )
         )
     )
-
   )
+
+(defun goodreads-book-action (book)
+  "Helper function for completion actions on BOOK from `goodreads-books'.
+
+like in `goodreads-add-to-shelf', BOOK is an element of the list returned by
+`goodreads-search-books' or `goodreads-get-shelf-books'."
+
+;; i would use ivy's multi actions but it seems not to be a feature of
+;; `completing-read' so i won't to maintain compatibility with non-ivy frameworks
+
+  (let* ((possible-actions '("Move to shelf"
+                             "Rate"
+                             "View on goodreads.com"))
+         ;; TODO make sure the list above maintains order in completing-read
+         (chosen-action (completing-read "Choose an action: " possible-actions)))
+    (print chosen-action)
+    (if (equal chosen-action "Move to shelf")
+        (let* ((shelf-names (goodreads-get-shelves))  ;; ugh i'm repeating this
+               (shelf-name (cadr (assoc (completing-read "Select a shelf: "
+                                                         shelf-names) shelf-names))))
+          (goodreads-add-to-shelf book shelf-name)
+          (print (format "Added book %s to shelf %s"
+                         (car book)
+                         shelf-name)))
+    ;; TODO: write helper function for rate
+    ;; TODO: write helper function for view
+    )
+  )
+)
 
 (defun goodreads-shelves ()
   "Select shelf to view.
@@ -364,11 +396,8 @@ basically a wrapper for `completing-read'"
          ;; get name of selected shelf via completing-read
          ;; the next two let calls are an inelegant way of getting just the
          ;; name of the shelf
-         (shelf-start
-          (completing-read "select a shelf: "
-                           shelf-names))
-         (shelf-name (cadr (assoc shelf-start shelf-names))))
-  ;; TODO call goodreads-books
+         (shelf-name (cadr (assoc (completing-read "Select a shelf: "
+                                                         shelf-names) shelf-names))))
 
     (goodreads-books shelf-name nil nil)
     )
