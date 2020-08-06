@@ -195,7 +195,9 @@ to be set."
       (setq name (nth 2 (assoc 'name this-shelf)))
       (setq book-count (nth 2 (assoc 'book_count this-shelf)))  ;; concat cries if this is a number so keeping it a string
 
-      (setq pretty-shelf-list (cons (list (concat name "\t" book-count " book(s)") id) pretty-shelf-list))))
+      ;; (setq pretty-shelf-list (cons (list (concat name "\t" book-count " book(s)") id) pretty-shelf-list))
+      ;; version with id as cdr
+      (setq pretty-shelf-list (cons (list (concat name "\t" book-count " book(s)") name) pretty-shelf-list))))
     (nreverse pretty-shelf-list)))
 
 
@@ -328,6 +330,31 @@ later add it it shelf or something)."
 
 
 ;;;; completion things
+
+(defun goodreads-books (&optional shelf-name books-list search-string)
+  "Search for books. you have to specify only one argument.
+
+not meant to be used by end user.
+
+if SHELF-NAME, look at the books in that shelf
+
+if SEARCH-STRING, look at the books returend by that search
+
+TODO: searching SEARCH-STRING on BOOKS-LIST"
+
+  (if (and shelf-name (not books-list) (not search-string))
+      (goodreads-books nil (goodreads-get-shelf-books shelf-name) nil)
+    (if (and search-string (not shelf-name) (not books-list))
+        (goodreads-books nil (goodreads-search-books search-string) nil)
+      (if (and books-list (not shelf-name) (not search-string))
+          (completing-read "select a book: " books-list)
+        (print "error. you have to specify (only) one argument!")
+          )
+        )
+    )
+
+  )
+
 (defun goodreads-shelves ()
   "Select shelf to view.
 
@@ -335,26 +362,16 @@ basically a wrapper for `completing-read'"
   (interactive)
   (let* ((shelf-names (goodreads-get-shelves))
          ;; get name of selected shelf via completing-read
-         ;; TODO get the first word of the string that completing-read returns...
-         ;; or just change -get-shelves so that the cdr is the name of the shelf
-         (shelf-id
-            (completing-read "select a shelf: "
-                                             shelf-names))
-
+         ;; the next two let calls are an inelegant way of getting just the
+         ;; name of the shelf
+         (shelf-start
+          (completing-read "select a shelf: "
+                           shelf-names))
+         (shelf-name (cadr (assoc shelf-start shelf-names))))
   ;; TODO call goodreads-books
 
+    (goodreads-books shelf-name nil nil)
     )
-  )
-
-(defun goodreads-books (&optional shelf-name books-list)
-  "Search for books.
-
-if SHELF-ID, look at the books in that shelf
-
-if SEARCH-STRING, look at the books returend by that search"
-
-  (if shelf-id
-      (goodreads-books nil (goodreads-get-shelf-books))
   )
 
 
