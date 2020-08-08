@@ -23,3 +23,8 @@ if you get an error that some function in =oauth= has a value of nil, then do =C
 next, you have to retrieve your unique user id from the goodreads servers to be able to write. this requires =goodreads-oauth-authorize= first. run =M-x goodreads-get-user-id=. if all goes well, your user id should be in the variable =goodreads-my-id=.
 
 * features
+** =(goodreads-shelves)=
+use this to select a shelf. after selecting a shelf, the books in that shelf will come up. you can =RET= on one of them (behind the scenes, this runs =goodreads-book-action=) to move to a shelf, rate, or view on goodreads.com.
+
+** =(goodreads-search-books (query))=
+searches for =QUERY=. you can =RET= on a book to add it to a shelf.
