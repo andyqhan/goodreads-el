@@ -310,10 +310,33 @@ TODO if REMOVE is set to 'remove', then the book is removed from the shelf."
      ;; instead of the singular /shelf/add_to_shelf.xml method, is because
      ;; that one for some reason doesn't work! with the same exact arguments!
      ;; i guess it's now a "feature" that this function can take a comma
-     ;; separated list of book-ids and shelf-names...
+     ;; separated list of book-ids and shelf-names... 🤢🤢
      "https://www.goodreads.com/shelf/add_books_to_shelves.xml"
      args)))
 
+(defun goodreads-add-review (book-id shelf-name &optional review-text rating date)
+  "Wrapper for API's review.create method.
+
+probably want to call if shelf-name = read, and use add-to-shelf otherwise."
+
+  (unless (sequencep date)
+    ;; TODO set default date to today's date, in YYYY-MM-DD format
+    ;; (setq date ))
+    )
+  (let ((args
+         `(("book_id" . ,book-id)
+           ("review[review]" . ,review-text)
+           ("review[rating]" . ,rating)
+           ("review[read_at]" . ,date)
+           ("finished" . "true")  ;; TODO only makes sense for read shelf
+           ("shelf" . ,shelf-name))))
+    ;; TODO says 401 not authorized 🤦
+    ;; if this method doesn't work, workaround might be to try review.edit. but
+    ;; this requires fetching review-id after adding book to shelf 😞
+    (oauth-post-url
+     goodreads-access-token
+     "https://www.goodreads.com/review.xml"
+     args)))
 
 ;;;; ivy things
 
@@ -345,17 +368,15 @@ if SEARCH-STRING, look at the books returend by that search
 
 TODO: searching SEARCH-STRING on BOOKS-LIST"
 
-  (if (and shelf-name (not books-list) (not search-string))
-      (goodreads-books nil (goodreads-get-shelf-books shelf-name) nil)
-    (if (and search-string (not shelf-name) (not books-list))
-        (goodreads-books nil (goodreads-search-books search-string) nil)
-      (if (and books-list (not shelf-name) (not search-string))
-          (goodreads-book-action
-           (assoc (completing-read "select a book: " books-list) books-list))
-        (print "error. you have to specify (only) one argument!")
-          )
+  (cond ((and shelf-name (not books-list) (not search-string))
+         (goodreads-books nil (goodreads-get-shelf-books shelf-name) nil))
+        ((and search-string (not shelf-name) (not books-list))
+         (goodreads-books nil (goodreads-search-books search-string) nil))
+        ((and books-list (not shelf-name) (not search-string))
+         (goodreads-book-action
+          (assoc (completing-read "select a book: " books-list) books-list)))
+        ('t (message "have to specify (only) one argument"))
         )
-    )
   )
 
 (defun goodreads-book-action (book)
