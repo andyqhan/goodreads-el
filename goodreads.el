@@ -124,18 +124,24 @@ that file so you won't have to reauthenticate."
 
 this basically asks the api for the xml result of searching for QUERY, then
 cleans it up a bit and passes it to `goodreads-get-relevant-info'."
-  (interactive)
+  (interactive "ssearch: ")
+
   (assert (not (equal goodreads-my-key 47))
           :string "`goodreads-my-key' not detected. make sure you setq it; see readme :)")
 
   (let (raw-search)
-  (with-temp-buffer
-    (shell-command (format "wget -qO- 'https://www.goodreads.com/search/index.xml?key=%s&q=%s'"
-                           goodreads-my-key
-                           query) t)  ; put output in temp buffer
-    (goto-char (point-min))
-    (setq raw-search (assoc 'search (assoc 'GoodreadsResponse (xml-parse-region (point)))))
-    (goodreads-get-relevant-info raw-search))))
+    (with-current-buffer
+        (oauth-fetch-url
+         goodreads-access-token
+         (format "https://www.goodreads.com/search/index.xml?q=%s&key=%s"
+                 (url-hexify-string query)
+                 goodreads-my-key))  ; put output in temp buffer
+
+      (goto-char (point-min))
+      (setq raw-search (assoc 'search (assoc 'GoodreadsResponse (xml-parse-region (point)))))
+      (goodreads-books nil  ; set book-list
+                       (delete '("		 / 	" nil) (goodreads-get-relevant-info raw-search))
+                       nil))))
 
 
 (defun goodreads-get-relevant-info (books)
@@ -314,7 +320,7 @@ TODO if REMOVE is set to 'remove', then the book is removed from the shelf."
      "https://www.goodreads.com/shelf/add_books_to_shelves.xml"
      args)))
 
-(defun goodreads-add-review (book-id shelf-name &optional review-text rating date)
+(defun goodreads-add-review (book-id shelf-name &optional date rating review-text)
   "Wrapper for API's review.create method.
 
 probably want to call if shelf-name = read, and use add-to-shelf otherwise."
@@ -323,37 +329,24 @@ probably want to call if shelf-name = read, and use add-to-shelf otherwise."
     ;; TODO set default date to today's date, in YYYY-MM-DD format
     ;; (setq date ))
     )
-  (let ((args
+  (let* ((args
          `(("book_id" . ,book-id)
-           ("review[review]" . ,review-text)
-           ("review[rating]" . ,rating)
-           ("review[read_at]" . ,date)
-           ("finished" . "true")  ;; TODO only makes sense for read shelf
-           ("shelf" . ,shelf-name))))
-    ;; TODO says 401 not authorized 🤦
-    ;; if this method doesn't work, workaround might be to try review.edit. but
-    ;; this requires fetching review-id after adding book to shelf 😞
+           ;("review[review]" . ,review-text)
+           ;("review[rating]" . ,rating)
+           ;("review[read_at]" . ,date)
+           ;("finished" . "true")  ;; TODO only makes sense for read shelf
+           ("shelf" . ,shelf-name)
+           )))
+    ;; TODO works now, but seems to break when adding in optional variables.
+    ;; some options: set default values of optional vars to "" (not sure if
+    ;; this will work); only initialize optional vars when they're passed
+    ;; (not sure how to implement)
     (oauth-post-url
      goodreads-access-token
      "https://www.goodreads.com/review.xml"
-     args)))
-
-;;;; ivy things
-
-(defun goodreads-ivy-action (id)
-  "Helper function for `goodreads-ivy-read'. Prints ID (for now;
-later add it it shelf or something)."
-  (print id)
+     args)
+    )
   )
-
-
-(defun goodreads-ivy-read (books-list)
-  "Wrapper function that passes BOOKS-LIST to `ivy-read'."
-  (ivy-read "Choose book: "
-            books-list
-            :require-match t
-            :action (lambda (book) (goodreads-ivy-action (cdr book)))))
-
 
 ;;;; completion things
 
@@ -374,6 +367,7 @@ TODO: searching SEARCH-STRING on BOOKS-LIST"
          (goodreads-books nil (goodreads-search-books search-string) nil))
         ((and books-list (not shelf-name) (not search-string))
          (goodreads-book-action
+          ;; TODO maintain order of list
           (assoc (completing-read "select a book: " books-list) books-list)))
         ('t (message "have to specify (only) one argument"))
         )
@@ -384,6 +378,8 @@ TODO: searching SEARCH-STRING on BOOKS-LIST"
 
 like in `goodreads-add-to-shelf', BOOK is an element of the list returned by
 `goodreads-search-books' or `goodreads-get-shelf-books'."
+
+;; TODO add "edit" action, calling "edit a review"
 
 ;; i would use ivy's multi actions but it seems not to be a feature of
 ;; `completing-read' so i won't to maintain compatibility with non-ivy frameworks
@@ -404,7 +400,8 @@ like in `goodreads-add-to-shelf', BOOK is an element of the list returned by
                          shelf-name)))
     ;; TODO: write helper function for rate
     ;; TODO: write helper function for view
-    )
+      )
+    (cdr book)
   )
 )
 
