@@ -325,10 +325,9 @@ TODO if REMOVE is set to 'remove', then the book is removed from the shelf."
 
 probably want to call if shelf-name = read, and use add-to-shelf otherwise."
 
-  (unless (sequencep date)
-    ;; TODO set default date to today's date, in YYYY-MM-DD format
-    ;; (setq date ))
-    )
+  (if (and (eq date nil) (eq shelf-name "read"))
+    ;; if date doesn't exist and shelf is "read", then make it today by default
+    (setq date (format-time-string "%Y-%m-%d")))
   (let* ((args
          `(("book_id" . ,book-id)
            ;("review[review]" . ,review-text)
@@ -341,11 +340,19 @@ probably want to call if shelf-name = read, and use add-to-shelf otherwise."
     ;; some options: set default values of optional vars to "" (not sure if
     ;; this will work); only initialize optional vars when they're passed
     ;; (not sure how to implement)
-    (oauth-post-url
-     goodreads-access-token
-     "https://www.goodreads.com/review.xml"
-     args)
-    )
+    ;; (if (stringp review-text)
+    ;;     (setq args (append args `(("review" . ,review-text)))))
+    ;; (if (stringp rating)
+    ;;     (setq args (append args `(("rating" . ,rating)))))
+    (if (stringp date)  ; if the date exists
+        (setq args (append args `(("review[read_at]" . ,date)))))
+    (print args)
+
+  (oauth-post-url
+   goodreads-access-token
+   "https://www.goodreads.com/review.xml"
+   args)
+  )
   )
 
 ;;;; completion things
