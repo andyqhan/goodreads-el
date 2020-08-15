@@ -334,8 +334,7 @@ probably want to call if shelf-name = read, and use add-to-shelf otherwise."
            ;("review[rating]" . ,rating)
            ;("review[read_at]" . ,date)
            ;("finished" . "true")  ;; TODO only makes sense for read shelf
-           ("shelf" . ,shelf-name)
-           )))
+           ("shelf" . ,shelf-name))))
     ;; TODO works now, but seems to break when adding in optional variables.
     ;; some options: set default values of optional vars to "" (not sure if
     ;; this will work); only initialize optional vars when they're passed
@@ -354,6 +353,23 @@ probably want to call if shelf-name = read, and use add-to-shelf otherwise."
    args)
   )
   )
+
+(defun goodreads-edit-review (review-id
+                              &optional review-text rating date finished shelf)
+  "Wrapper for API's review.edit method."
+  (let ((args
+         `(("id" . ,review-id)
+           ("review[review]" . ,review-text)
+           ("review[rating]" . ,rating)
+           ("review[read_at]" . date)
+           ("finished" . ,finished)
+           ("shelf" . ,shelf))))
+
+    (oauth-post-url
+     goodreads-access-token
+     (format "https://www.goodreads.com/review/%s.xml"
+             review-id)
+     args)))
 
 ;;;; completion things
 
