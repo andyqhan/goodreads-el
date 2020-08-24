@@ -217,7 +217,7 @@ note that for the 'read' shelf, 'date_read' is appropriate, while for the
 'to-read' shelf, 'date_added' is appropriate."
 
   ;; cl-defun bc i need default value of optional argument
-  (interactive)
+
   (let ((total-reviews 1) (reviews-list nil) (this-page-reviews) (page-num 1))  ;; for whatever reason, goodreads calls books that are on shelves "reviews"
     (while (< (length reviews-list) total-reviews)
       (print (length reviews-list))
@@ -264,7 +264,8 @@ note that for the 'read' shelf, 'date_read' is appropriate, while for the
       ;; go to the next page
       (1+ page-num))
 
-    (print reviews-list)))
+    (print reviews-list)
+    ))
 
 
 (defun goodreads-get-book-id-with-isbn (isbn)
@@ -357,13 +358,15 @@ probably want to call if shelf-name = read, and use add-to-shelf otherwise."
   )
 
 (defun goodreads-edit-review (review-id
-                              &optional review-text rating date finished shelf)
-  "Wrapper for API's review.edit method."
+                              &optional review-text rating read-date finished shelf)
+  "Wrapper for API's review.edit method on REVIEW-ID.
+
+Optional parameters REVIEW-TEXT, RATING, ADDED-DATE, FINISHED (bool), and SHELF."
   (let ((args
          `(("id" . ,review-id)
            ("review[review]" . ,review-text)
            ("review[rating]" . ,rating)
-           ("review[read_at]" . date)
+           ("review[read_at]" . read-date)
            ("finished" . ,finished)
            ("shelf" . ,shelf))))
 
@@ -374,7 +377,9 @@ probably want to call if shelf-name = read, and use add-to-shelf otherwise."
      args)))
 
 (defun goodreads-show-review (review-id)
-  "Not sure if I really need this function."
+  "Wrapper for API's review.show method on REVIEW-ID.
+
+Return a list of cons cells containing information about the review."
   (let (this-show-review)
   (with-current-buffer (oauth-fetch-url
                         goodreads-access-token
@@ -384,10 +389,10 @@ probably want to call if shelf-name = read, and use add-to-shelf otherwise."
     (goto-char (point-min))
     (forward-line 21)
     (setq this-show-review (assoc 'review (car (xml-parse-region (point))))))
-  (print this-show-review)
-  (let (user book-id title author avg-rating user-rating rating-count
-             review-text review-url pages shelf book-url review-url created-date
-             read-date pub-year)
+  (let (user book-id title author avg-rating user-rating rating-count description
+             review-text review-url pages shelf book-url review-url added-date
+             read-date pub-year shelf-name)
+
     (setq user (nth 2 (assoc 'name (assoc 'user this-show-review))))
 
     (setq book-id (nth 2 (assoc 'id (assoc 'book this-show-review))))
@@ -397,10 +402,35 @@ probably want to call if shelf-name = read, and use add-to-shelf otherwise."
     (setq pub-year (nth 2 (assoc 'publication_year (assoc 'book this-show-review))))
     (setq avg-rating (nth 2 (assoc 'average_rating (assoc 'book this-show-review))))
     (setq rating-count (nth 2 (assoc 'ratings_count (assoc 'book this-show-review))))
+    (setq description (nth 2 (assoc 'description (assoc 'book this-show-review))))
 
-    )
-  )
-)
+    (setq author (nth 2 (assoc 'name (assoc 'author (assoc 'authors (assoc 'book this-show-review))))))
+
+    (setq shelf-name (assoc 'name (cadr (assoc 'shelf (assoc 'shelves this-show-review)))))
+
+    (setq user-rating (nth 2 (assoc 'rating this-show-review)))
+    (setq added-date (nth 2 (assoc 'date_added this-show-review)))
+    (setq read-date (nth 2 (assoc 'read_at this-show-review)))
+    (setq review-text (nth 3 (assoc 'body this-show-review)))
+    (setq review-url (nth 2 (assoc 'link this-show-review)))
+
+    (list (cons 'user user)
+          (cons 'book-id book-id)
+          (cons 'title title)
+          (cons 'book-url book-url)
+          (cons 'pages pages)
+          (cons 'pub-year pub-year)
+          (cons 'avg-rating avg-rating)
+          (cons 'rating-count rating-count)
+          (cons 'description description)
+          (cons 'author author)
+          (cons 'shelf-name shelf-name)
+          (cons 'user-rating user-rating)
+          (cons 'added-date added-date)
+          (cons 'read-date read-date)
+          (cons 'review-text review-text)
+          (cons 'review-url review-url)))))
+
 ;;;; completion things
 
 (defun goodreads-books (&optional shelf-name books-list search-string)
@@ -438,20 +468,55 @@ like in `goodreads-add-to-shelf', BOOK is an element of the list returned by
 ;; `completing-read' so i won't to maintain compatibility with non-ivy frameworks
 
   (let* ((possible-actions '("Move to shelf"
-                             "Rate"
+                             "Edit"
                              "View on goodreads.com"))
          ;; TODO make sure the list above maintains order in completing-read
          (chosen-action (completing-read "Choose an action: " possible-actions)))
     (print chosen-action)
-    (if (equal chosen-action "Move to shelf")
-        (let* ((shelf-names (goodreads-get-shelves))  ;; ugh i'm repeating this
-               (shelf-name (cadr (assoc (completing-read "Select a shelf: "
-                                                         shelf-names) shelf-names))))
-          (goodreads-add-to-shelf book shelf-name)
-          (print (format "Added book %s to shelf %s"
-                         (car book)
-                         shelf-name)))
-    ;; TODO: write helper function for rate
+    (cond
+     ((equal chosen-action "Move to shelf")
+      (let* ((shelf-names (goodreads-get-shelves))  ;; ugh i'm repeating this
+             (shelf-name (cadr (assoc (completing-read "Select a shelf: "
+                                                       shelf-names) shelf-names))))
+        (goodreads-add-to-shelf book shelf-name)
+        (print (format "Added book %s to shelf %s"
+                       (car book)
+                       shelf-name))))
+    ;; TODO: write helper function for edit
+
+     ((equal chosen-action "Edit")
+      (let* ((review-id (nth 1 book))
+             (review-attributes (goodreads-show-review review-id))
+             (edit-action (completing-read "Select an attribute to edit: "
+                                           `(,(assoc 'review-text review-attributes)
+                                             ,(assoc 'user-rating review-attributes)
+                                             ,(assoc 'read-date review-attributes)
+                                             ,(assoc 'shelf-name review-attributes))
+                                           )))
+        (cond
+         ((equal (car edit-action) 'review-text)
+          (goodreads-edit-review review-id (read-string "New review: ")
+                                 nil nil nil nil))
+         ((equal (car edit-action) 'user-rating)
+          (goodreads-edit-review review-id nil
+                                 (completing-read "New rating (0 means no rating): "
+                                                  '(5 4 3 2 1 0))
+                                 nil nil nil))
+         ((equal (car edit-action) 'read-date)
+          (goodreads-edit-review review-id nil nil
+                                 ;; TODO figure out how to input date
+                                 nil nil))
+         ((equal (car edit-action) 'shelf-name)
+          (let* ((shelf-names (goodreads-get-shelves))  ;; ugh i'm repeating this again
+                 (shelf-name (cadr (assoc (completing-read "Select a shelf: "
+                                                           shelf-names) shelf-names))))
+          (goodreads-edit-review review-id nil nil nil nil shelf-name))
+          )
+         )
+        )
+
+      )
+
     ;; TODO: write helper function for view
       )
     (nth 2 book)
