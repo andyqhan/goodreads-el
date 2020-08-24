@@ -237,14 +237,15 @@ note that for the 'read' shelf, 'date_read' is appropriate, while for the
 
       ;; minimal list with all the info in it
       (setq this-page-reviews (assoc 'reviews (nthcdr 7 this-page-reviews)))
-      ; (print this-page-reviews)
+      (print this-page-reviews)
 
       ;; pull out relevant info for each book on this page
       (let ((page-review-count (string-to-number (cdr (assoc 'end (nth 1 this-page-reviews))))))
         ; (print page-review-count)
         (dotimes (this-review-index page-review-count reviews-list)
           ; (print this-review-index)
-          (let (id title author year rating rating-count
+          (let (id title author year rating rating-count review-id
+                   ;; set this-review to the list with key "review"
                    (this-review (assoc 'book (nth (* 2 this-review-index) (nthcdr 3 this-page-reviews)))))
             (setq id (nth 2 (assoc 'id this-review)))
             (setq title (nth 2 (assoc 'title_without_series this-review)))
@@ -252,8 +253,9 @@ note that for the 'read' shelf, 'date_read' is appropriate, while for the
             (setq rating (nth 2 (assoc 'average_rating this-review)))
             (setq rating-count (nth 2 (assoc 'ratings_count this-review)))
             (setq author (nth 2 (assoc 'name (assoc 'author (assoc 'authors this-review)))))
+            (setq review-id (nth 2 (assoc 'id (nth (* 2 this-review-index) (nthcdr 3 this-page-reviews)))))
             (setq reviews-list (cons (list (concat "'" title "'" ", " author " (" year "). " rating " / " rating-count)
-                                           id) reviews-list)))))
+                                           review-id id) reviews-list)))))
 
       ;; set the total number of reviews if it's not already been set
       (if (not (eq total-reviews 1))
@@ -308,8 +310,8 @@ TODO if REMOVE is set to 'remove', then the book is removed from the shelf."
   (let ((args
          ;; backtick and commas allow quoted lists with stuff evaluated inside
          `(("shelves" . ,shelf-name)
-           ;; nth 1 in order to get id
-           ("bookids" . ,(nth 1 book)))))
+           ;; nth 2 in order to get id (nth 1 for review)
+           ("bookids" . ,(nth 2 book)))))
     (oauth-post-url
      goodreads-access-token
      ;; ok. so this api is complete trash. the reason i'm using this method,
@@ -371,6 +373,34 @@ probably want to call if shelf-name = read, and use add-to-shelf otherwise."
              review-id)
      args)))
 
+(defun goodreads-show-review (review-id)
+  "Not sure if I really need this function."
+  (let (this-show-review)
+  (with-current-buffer (oauth-fetch-url
+                        goodreads-access-token
+                        (format "https://www.goodreads.com/review/show.xml?key=%s&id=%s"
+                                goodreads-my-secret
+                                review-id))
+    (goto-char (point-min))
+    (forward-line 21)
+    (setq this-show-review (assoc 'review (car (xml-parse-region (point))))))
+  (print this-show-review)
+  (let (user book-id title author avg-rating user-rating rating-count
+             review-text review-url pages shelf book-url review-url created-date
+             read-date pub-year)
+    (setq user (nth 2 (assoc 'name (assoc 'user this-show-review))))
+
+    (setq book-id (nth 2 (assoc 'id (assoc 'book this-show-review))))
+    (setq title (nth 2 (assoc 'title (assoc 'book this-show-review))))
+    (setq book-url (nth 2 (assoc 'link (assoc 'book this-show-review))))
+    (setq pages (nth 2 (assoc 'num_pages (assoc 'book this-show-review))))
+    (setq pub-year (nth 2 (assoc 'publication_year (assoc 'book this-show-review))))
+    (setq avg-rating (nth 2 (assoc 'average_rating (assoc 'book this-show-review))))
+    (setq rating-count (nth 2 (assoc 'ratings_count (assoc 'book this-show-review))))
+
+    )
+  )
+)
 ;;;; completion things
 
 (defun goodreads-books (&optional shelf-name books-list search-string)
@@ -424,9 +454,11 @@ like in `goodreads-add-to-shelf', BOOK is an element of the list returned by
     ;; TODO: write helper function for rate
     ;; TODO: write helper function for view
       )
-    (cdr book)
+    (nth 2 book)
   )
-)
+  )
+
+
 
 (defun goodreads-shelves ()
   "Select shelf to view.
