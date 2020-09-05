@@ -27,15 +27,13 @@
 ;; the thing in eval-when-compile wasn't loaded, which meant that oauth-nonce-function
 ;; was not activated to sasl-unique-id
 
-(defcustom goodreads-my-key "CRkTPII6roYd9yGS9iTkag"
+(defcustom goodreads-my-key 47
   "Your public goodreads key.")  ; set these to 47 when I'm done
-(defcustom goodreads-my-secret "6Un4YARg5MWpW1gcQYGwi1ticXKkRECpZk6JXuzM"
+(defcustom goodreads-my-secret 47
   "Your secret goodreads key.")
 (defvar goodreads-my-id 47
-  "Your user_id.")
+  "Your user_id. Set it using `goodreads-get-user-id'.")
 
-;; lmao remember when you spent like an hour debugging ouauth-authorize when you just forgot
-;; to put www. in these urls
 (defvar goodreads-req-url "https://www.goodreads.com/oauth/request_token")
 (defvar goodreads-acc-url "https://www.goodreads.com/oauth/access_token")
 (defvar goodreads-auth-url "https://www.goodreads.com/oauth/authorize")
@@ -44,11 +42,6 @@
   "Location for the file containing your unique access token.
 defaults to ~/.goodreads-el-token. windows users probably have to change it.")
 (defvar goodreads-access-token nil)
-
-(defvar test-query "ashley+knots+the")
-
-;; TODO translate human input into the HTML-readable string
-
 
 (defun goodreads-oauth-authorize ()
   "Use oauth.el to authorize this app so it can write to your goodreads.
@@ -113,8 +106,7 @@ that file so you won't have to reauthenticate."
                           "https://www.goodreads.com/api/auth_user")
       ;; `oauth-fetch-url' returns buffer containing GET thingie
       (goto-char (point-min))
-      (forward-line 21)  ;; idk if this is the best way to do this.
-      ;; worried that header won't always be 21 lines
+      (forward-line 21)  ;; idk if this is the best way to do this
       (setq user-list (assoc 'user (assoc 'GoodreadsResponse (xml-parse-region (point))))))
     (setq goodreads-my-id (string-to-number (cdr (nth 0 (nth 1 user-list)))))))
 
@@ -156,7 +148,7 @@ authentication"
 
     (dotimes (book-index book-count relevant-list)  ; iterate over every book in BOOKS
     ; not using dolist because RESULTS has weird quotation marks and shit everywhere
-      (let (id title author rating rating-count year
+      (let (id title author rating rating-count year url
                (this-book (assoc 'work (nthcdr book-index results))))
         (setq id (nth 2 (assoc 'id (assoc 'best_book this-book))))  ;; the other id is the work id! doesn't work with add-to-shelf with work id.
         (setq rating-count (nth 2 (assoc 'ratings_count this-book)))
@@ -164,10 +156,24 @@ authentication"
         (setq rating (nth 2 (assoc 'average_rating this-book)))
         (setq title (nth 2 (assoc 'title (assoc 'best_book this-book))))
         (setq author (nth 2 (assoc 'name (assoc 'author (assoc 'best_book this-book)))))
+        (setq url (nth 2 (assoc 'link (assoc 'best_book this-book))))
         ;; add the list of attributes for THIS-BOOK onto RELEVANT-LIST
         (setq relevant-list (cons (list (concat title "\t" author "\t" rating " / " rating-count "\t" year) id) relevant-list))))
     (nreverse relevant-list)))  ; it's built in reverse
 
+(defun goodreads-book-url (id)
+  "Return URL of book ID."
+  (let (this-book)
+  (with-current-buffer (oauth-fetch-url
+                        goodreads-access-token
+                        (format "https://www.goodreads.com/book/show.xml?key=%s&id=%s"
+                                goodreads-my-secret
+                                id))
+    (goto-char (point-min))
+    (forward-line 21)
+    (setq this-book (assoc 'book (assoc 'GoodreadsResponse (xml-parse-region (point)))))
+    )
+  (nth 2 (assoc 'url this-book))))
 
 (defun goodreads-get-shelves ()
   "Return your shelves in the form of a list of tuples.
@@ -253,7 +259,7 @@ note that for the 'read' shelf, 'date_read' is appropriate, while for the
             (setq author (nth 2 (assoc 'name (assoc 'author (assoc 'authors this-review)))))
             (setq review-id (nth 2 (assoc 'id (nth (* 2 this-review-index) (nthcdr 3 this-page-reviews)))))
             (setq reviews-list (cons (list (concat "'" title "'" ", " author " (" year "). " rating " / " rating-count)
-                                           review-id id) reviews-list)))))
+                                           id review-id) reviews-list)))))
 
       ;; set the total number of reviews if it's not already been set
       (if (not (eq total-reviews 1))
@@ -262,8 +268,7 @@ note that for the 'read' shelf, 'date_read' is appropriate, while for the
       ;; go to the next page
       (1+ page-num))
 
-    (print reviews-list)
-    ))
+    (print reviews-list)))
 
 
 (defun goodreads-get-book-id-with-isbn (isbn)
@@ -309,8 +314,11 @@ TODO if REMOVE is set to 'remove', then the book is removed from the shelf."
   (let ((args
          ;; backtick and commas allow quoted lists with stuff evaluated inside
          `(("shelves" . ,shelf-name)
-           ;; nth 2 in order to get id (nth 1 for review)
-           ("bookids" . ,(nth 2 book)))))
+           ;; nth 1 in order to get id (nth 2 for review)
+           ("bookids" . ,(nth 1 book)))))
+    (print args)
+    (print book)
+    (print shelf-name)
     (oauth-post-url
      goodreads-access-token
      ;; ok. so this api is complete trash. the reason i'm using this method,
@@ -351,9 +359,7 @@ probably want to call if shelf-name = read, and use add-to-shelf otherwise."
   (oauth-post-url
    goodreads-access-token
    "https://www.goodreads.com/review.xml"
-   args)
-  )
-  )
+   args)))
 
 (defun goodreads-edit-review (review-id
                               &optional review-text rating read-date finished shelf)
@@ -452,9 +458,7 @@ i feel like this function is unnecessary but it's a black box now lmfao"
          (goodreads-book-action
           ;; TODO maintain order of list
           (assoc (completing-read "select a book: " books-list) books-list)))
-        ('t (message "have to specify (only) one argument"))
-        )
-  )
+        ('t (message "have to specify (only) one argument"))))
 
 (defun goodreads-book-action (book)
   "Helper function for completion actions on BOOK from `goodreads-books'.
@@ -519,20 +523,17 @@ like in `goodreads-add-to-shelf', BOOK is an element of the list returned by
      ;;      (goodreads-edit-review review-id nil nil nil nil shelf-name))))))
 
      ((equal chosen-action "View on goodreads.com")
-      (let* ((review-id (nth 1 book))
+      (if (stringp (nth 2 book))
+          (let* ((review-id (nth 2 book))
              (review-attributes (goodreads-show-review review-id)))
-        (browse-url (cdr (assoc 'book-url review-attributes))))))
+            (browse-url (cdr (assoc 'book-url review-attributes))))
+        (let* ((id (nth 1 book)))
+          (browse-url (goodreads-book-url id)))))
 
-    (nth 2 book)
-  )
-  )
-
-
+    (nth 2 book))))
 
 (defun goodreads-shelves ()
-  "Select shelf to view.
-
-basically a wrapper for `completing-read'"
+  "Select a shelf from your shelves to view."
   (interactive)
   (let* ((shelf-names (goodreads-get-shelves))
          ;; get name of selected shelf via completing-read
@@ -541,9 +542,7 @@ basically a wrapper for `completing-read'"
          (shelf-name (cadr (assoc (completing-read "Select a shelf: "
                                                          shelf-names) shelf-names))))
 
-    (goodreads-books shelf-name nil nil)
-    )
-  )
+    (goodreads-books shelf-name nil nil)))
 
 
 (provide 'goodreads)
