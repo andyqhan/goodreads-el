@@ -1,8 +1,8 @@
 #+TITLE: goodreads-el
 
-* UPDATE
-
-Unfortunately, Goodreads has decided to [[retire their api][https://help.goodreads.com/s/article/Does-Goodreads-support-the-use-of-APIs]]. This means you won't be able to register for a developer key, and this package straight-up won't work. Sigh.
+#+begin_quote
+Unfortunately, Goodreads has decided to [[https://help.goodreads.com/s/article/Does-Goodreads-support-the-use-of-APIs][retire their api]]. This means you won't be able to register for a developer key, and this package straight-up won't work. Sigh. I'm gonna archive the repo.
+#+end_quote
 
 this package allows you to manage goodreads from within your emacs.
 
